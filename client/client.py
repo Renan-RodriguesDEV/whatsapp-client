@@ -29,7 +29,7 @@ from client.settings import DIR_PROFILE, DOWNLOADS_PATH, TIMEOUT, WHATSAPP_URL
 
 
 class WhatsappClient:
-    def __init__(self, headless: bool = True):
+    def __init__(self, headless: bool = False):
         self.page = None
         self.headless = headless
         self.browser = None

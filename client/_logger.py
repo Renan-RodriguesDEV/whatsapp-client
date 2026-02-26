@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 
 
@@ -21,9 +22,12 @@ def setup_logger(name: str = "whatsapp_client", save_to_file: bool = False):
     ch.setFormatter(formatter)
 
     # criando um handler para arquivos
-    fh = logging.FileHandler(f"logs/{name}.log")
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(formatter)
+    if save_to_file:
+        if not os.path.exists("logs"):
+            os.makedirs("logs")
+        fh = logging.FileHandler(f"logs/{name}.log")
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(formatter)
 
     # adicionando os handlers ao logger
     logger.addHandler(ch)
