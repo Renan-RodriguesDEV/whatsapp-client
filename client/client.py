@@ -11,8 +11,10 @@ import time
 from pathlib import Path
 from typing import Literal
 
-from config import PATH_DOWNLOADS, PATH_USER_DATA, TIMEOUT, URL_WHATSAPP
-from elements import (
+from playwright.sync_api import sync_playwright
+
+from client._logger import logger
+from client.elements import (
     DOCUMENTS,
     FIND_CONVERSATION,
     IMAGES,
@@ -23,7 +25,7 @@ from elements import (
     SEND_BUTTON,
     SEND_BUTTON_ATTACHMENTS,
 )
-from playwright.sync_api import sync_playwright
+from client.settings import DIR_PROFILE, DOWNLOADS_PATH, TIMEOUT, WHATSAPP_URL
 
 
 class WhatsappClient:
@@ -44,27 +46,30 @@ class WhatsappClient:
         """Inicia uma pagina no navegador"""
         self.playwright = sync_playwright().start()
         self.browser = self.playwright.chromium.launch_persistent_context(
-            user_data_dir=PATH_USER_DATA,
+            user_data_dir=DIR_PROFILE,
             headless=self.headless,
-            downloads_path=PATH_DOWNLOADS,
+            downloads_path=DOWNLOADS_PATH,
             timeout=TIMEOUT,
+            locale="pt-BR",
         )
-        self.page = self.browser.new_page()
+        self.page = (
+            self.browser.new_page() if not self.browser.pages else self.browser.pages[0]
+        )
+        self.page.goto(WHATSAPP_URL)
 
     def login(self):
         """Abre o WhatsApp Web e checa se já foi feito o scan do QRCODE ou se o usuario ainda vai logar"""
-        self.page.goto(URL_WHATSAPP)
         try:
             # espera o elemento de pesquisar contato aparecer para saber que já logou, se não aparecer é porque precisa logar
             self.page.wait_for_selector(
                 FIND_CONVERSATION,
                 timeout=TIMEOUT,
             )
-            print("Logged in to WhatsApp Web successfully.")
+            logger.info("Your are already logged in.")
             return True
         except TimeoutError:
             if self.page.wait_for_selector(QRCODE):
-                print(
+                logger.info(
                     "Please scan the QR code to log in to WhatsApp Web and execute the script again."
                 )
                 try:
@@ -74,7 +79,7 @@ class WhatsappClient:
                     )
                     return True
                 except TimeoutError:
-                    print("Login timed out.")
+                    logger.warning("Login timed out.")
                     raise TimeoutError("Scan the QR code and run it again.")
 
     def find_contact(self, contact: str):
@@ -86,13 +91,17 @@ class WhatsappClient:
         Returns:
             bool: Retorna True se o contato foi encontrado, False caso contrário
         """
-        self.page.query_selector(FIND_CONVERSATION).fill(contact)
+        inuput_search = self.page.query_selector(FIND_CONVERSATION)
+        self.page.keyboard.press(
+            "Control+KeyA"
+        )  # seleciona o texto do campo de pesquisa
+        inuput_search.fill(contact)
         self.page.keyboard.press("Enter")
         try:
             # procura o elemento de digitar msg para saber que encontrou o contato
             self.page.wait_for_selector(INPUT_TEXT)
         except TimeoutError:
-            print(f"Contact '{contact}' not found.")
+            logger.warning(f"Contact '{contact}' not found.")
             return False
         return True
 
@@ -106,17 +115,21 @@ class WhatsappClient:
         Returns:
             bool: Retorna True se a mensagem foi enviada com sucesso, False caso contrário
         """
-        self.login()
+        if not self.login():
+            logger.warning("Login is required to send messages.")
+            return False
         if self.find_contact(contact):
             try:
                 self.page.fill(INPUT_TEXT, message)
                 self.page.click(SEND_BUTTON)
+                time.sleep(1)
                 # espera o IS_SEND sumir da tela, ficar detached
                 self.page.wait_for_selector(IS_SEND, state="detached")
-                print(f"Message '{message}' sent to {contact}.")
+                time.sleep(1)
+                logger.info(f"Message '{message}' sent to {contact}.")
                 return True
             except Exception as e:
-                print(f"Err in send message to {contact}: {e}")
+                logger.warning(f"Error sending message to {contact}: {e}")
                 return False
         return False
 
@@ -138,11 +151,18 @@ class WhatsappClient:
         Returns:
             bool: Retorna True se o arquivo foi enviado com sucesso, False caso contrário
         """
-        self.login()
+        if not self.login():
+            logger.warning("Login is required to send messages.")
+            return False
         if self.find_contact(contact):
             try:
+                if caption:
+                    # adiciona um texto ao anexo
+                    input_text = self.page.query_selector_all(INPUT_TEXT)[0]
+                    input_text.fill("")
+                    input_text.fill(caption)
                 if mediatype == "document":
-                    print("Sending document")
+                    logger.info("Sending document")
                     # se o mediatype for documento abre o explore de arquivos (.pdf,.xlsx e etc.)
                     self.page.click(PLUS_ICON)
                     with self.page.expect_file_chooser() as fc_info:
@@ -151,7 +171,7 @@ class WhatsappClient:
                     # seta o arquivo desse explorador sendo o file do argumento
                     fc.set_files(file)
                 else:
-                    print("Sending image")
+                    logger.info("Sending image")
                     # se o mediatype for image abre o explore de arquivos (.jpg,.png e etc.)
                     self.page.click(PLUS_ICON)
                     with self.page.expect_file_chooser() as fc_info:
@@ -159,16 +179,14 @@ class WhatsappClient:
                     fc = fc_info.value
                     # seta o arquivo desse explorador sendo o file do argumento
                     fc.set_files(file)
-                if caption:
-                    # adiciona um texto ao anexo
-                    self.page.fill(INPUT_TEXT, caption)
                 self.page.click(SEND_BUTTON_ATTACHMENTS)
-                time.sleep(3)
+                time.sleep(2)
                 # espera o IS_SEND sumir da tela, ficar detached
                 self.page.wait_for_selector(IS_SEND, state="detached", timeout=TIMEOUT)
-                print(f"File '{file.name}', sent to {contact}.")
+                time.sleep(2)
+                logger.info(f"File '{file.name}', sent to {contact}.")
                 return True
             except TimeoutError as e:
-                print(f"Error sending file to {contact}: {e}")
+                logger.warning(f"Error sending file to {contact}: {e}")
                 return False
         return False
