@@ -40,10 +40,16 @@ class WhatsappClient:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.browser.close()
+        if self.browser:
+            self.browser.close()
+            logger.debug("Browser closed.")
+        if self.playwright:
+            self.playwright.stop()
+            logger.debug("Playwright stopped.")
 
     def start(self):
         """Inicia uma pagina no navegador"""
+        logger.debug('Starting WhatsApp Client...')
         self.playwright = sync_playwright().start()
         self.browser = self.playwright.chromium.launch_persistent_context(
             user_data_dir=DIR_PROFILE,
@@ -55,6 +61,7 @@ class WhatsappClient:
         self.page = (
             self.browser.new_page() if not self.browser.pages else self.browser.pages[0]
         )
+        logger.debug("Navigating to WhatsApp Web...")
         self.page.goto(WHATSAPP_URL)
 
     def login(self):

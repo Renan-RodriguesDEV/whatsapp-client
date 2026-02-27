@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 import sys
@@ -25,7 +26,8 @@ def setup_logger(name: str = "whatsapp_client", save_to_file: bool = False):
     if save_to_file:
         if not os.path.exists("logs"):
             os.makedirs("logs")
-        fh = logging.FileHandler(f"logs/{name}.log")
+        current_date = datetime.datetime.now().strftime("%Y%m%d")
+        fh = logging.FileHandler(f"logs/{name}_{current_date}.log")
         fh.setLevel(logging.DEBUG)
         fh.setFormatter(formatter)
 
